@@ -25,7 +25,7 @@ class DatomSpec extends AnyFlatSpec {
 
   "it " should "serialize and order datoms (serialized as array of arrays of bytes) correctly " in {
 
-    implicit val eavtComp = new Ordering[Datom] {
+    implicit val vaetComp = new Ordering[Datom] {
       val comp = UnsignedBytes.lexicographicalComparator()
 
       override def compare(x: Datom, y: Datom): Int = {
