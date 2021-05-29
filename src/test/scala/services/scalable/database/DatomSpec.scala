@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory
 import services.scalable.database.grpc._
 import services.scalable.index._
 import services.scalable.index.impl._
+import com.google.protobuf.any.Any
 
 import java.nio.ByteBuffer
 import java.util.concurrent.ThreadLocalRandom
@@ -54,14 +55,20 @@ class DatomSpec extends AnyFlatSpec {
 
     implicit val global = ExecutionContext.global
     implicit val cache = new DefaultCache[Datom, Bytes](100L * 1024L * 1024L, 10000)
-    //implicit val storage = new CassandraStorage("indexes", truncate = true)
+
+    implicit val serializer = new GrpcByteSerializer[Datom, Bytes](new Serializer[Datom] {
+      override def serialize(t: Datom): Array[Byte] = t.toByteArray
+      override def deserialize(b: Array[Byte]): Datom = Any.parseFrom(b).unpack(Datom)
+    }, DefaultSerializers.byteSerializer)
+
+   //implicit val storage = new CassandraStorage("indexes", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, truncate = true)
 
     implicit val storage = new MemoryStorage[Datom, Bytes](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     implicit val ctx = new DefaultContext[Datom, Bytes](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     logger.debug(s"${Await.result(storage.loadOrCreate(indexId), Duration.Inf)}")
 
-    val index = new Index[Datom, Array[Byte]]()
+    val index = new QueryableIndex[Datom, Array[Byte]]()
 
     val n = 100
 
