@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+//#options
+option java_multiple_files = true;
+option java_package = "services.scalable.database.grpc";
+option java_outer_classname = "GreeterService";
+
+package services.scalable.database.grpc;
+
+message HelloRequest {
+  string name = 1;
+}
+
+message HelloResponse {
+  string msg = 1;
+}
+
+message Datom {
+  string e = 1;
+  string a = 2;
+  bytes v = 3;
+  int64 t = 4;
+}

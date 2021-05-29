@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+import "protocol.proto";
+
+//#options
+option java_multiple_files = true;
+option java_package = "services.scalable.database.grpc";
+option java_outer_classname = "ClientService";
+
+package services.scalable.database.grpc;
+//#options
+
+//#services
+service GreeterService {
+    rpc SayHello (HelloRequest) returns (HelloResponse) {}
+}
+
+//#services
