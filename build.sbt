@@ -1,7 +1,7 @@
 organization := "services.scalable"
 name := "database"
 
-version := "0.1"
+version := "0.2"
 
 scalaVersion := "2.12.13"
 
@@ -18,7 +18,9 @@ libraryDependencies ++= Seq(
 
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
 
-  "services.scalable" %% "index" % "0.6"
+  "io.vertx" % "vertx-json-schema" % "4.0.3",
+
+  "services.scalable" %% "index" % "0.7"
 )
 
 dependencyOverrides += "com.thesamet.scalapb" %% "compilerplugin" % "0.11.1"

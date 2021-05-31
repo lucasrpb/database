@@ -1,23 +1,58 @@
 package services.scalable.database
 
-import services.scalable.database.grpc.Datom
-import services.scalable.index.{AsyncIterator, Block, Context, Index}
+import com.google.common.primitives.UnsignedBytes
+import services.scalable.index.{AsyncIterator, Block, Bytes, Context, Index}
+
 import scala.concurrent.{ExecutionContext, Future}
 
-class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override val ctx: Context[K, V],
-                           implicit val ord: Ordering[K]) extends Index[K, V]()(ec, ctx) {
+class QueryableIndex(override implicit val ec: ExecutionContext, override val ctx: Context,
+                           implicit val ord: Ordering[Bytes]) extends Index()(ec, ctx) {
 
   val $this = this
 
-  def findAll(prefix: K)(implicit prefixOrd: Ordering[K] = this.ord): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V](prefixOrd, ord) {
+  def findPrefix(prefix: Bytes)(implicit prefixOrd: Ordering[Bytes]): AsyncIterator[Seq[Tuple2[Bytes, Bytes]]] = new AsyncIterator[Seq[Tuple2[Bytes, Bytes]]]{
 
-    val leftMostOrdering = new Ordering[K] {
-      override def compare(x: K, y: K): Int = {
-        val r = prefixOrd.compare(x, y)
+    protected var limit = Int.MaxValue
+    protected var counter = 0
+
+    protected var filter: (Bytes, Bytes) => Boolean = (_, _) => true
+
+    protected var cur: Option[Block] = None
+
+    protected var firstTime = false
+    protected var stop = false
+
+    def setLimit(lim: Int): Unit = {
+      this.limit = lim
+    }
+
+    def setFilter(f: (Bytes, Bytes) => Boolean): Unit = synchronized {
+      this.filter = f
+    }
+
+    def checkCounter(filtered: Seq[Tuple2[Bytes, Bytes]]): Seq[Tuple2[Bytes, Bytes]] = synchronized {
+      val len = filtered.length
+
+      if(counter + len >= limit){
+        stop = true
+      }
+
+      val n = Math.min(len, limit - counter)
+
+      counter += n
+
+      filtered.slice(0, n)
+    }
+
+    // This workaround is necessary in order to find prefixes
+    val leftMostOrdering = new Ordering[Bytes]{
+      val comp = UnsignedBytes.lexicographicalComparator()
+
+      override def compare(d0: Bytes, d1: Bytes): Int = {
+        val r = prefixOrd.compare(d0, d1)
 
         if(r != 0) return r
 
-        // Here would be 0, but we need to find the first element with the prefix (leftmost one)
         -1
       }
     }
@@ -27,19 +62,19 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
       Future.successful(!stop && cur.isDefined)
     }
 
-    override def next(): Future[Seq[Tuple2[K, V]]] = synchronized {
+    override def next(): Future[Seq[Tuple2[Bytes, Bytes]]] = synchronized {
       if(!firstTime){
         firstTime = true
 
         return findPath(prefix)(leftMostOrdering).map {
           case None =>
             cur = None
-            Seq.empty[Tuple2[K, V]]
+            Seq.empty[Tuple2[Bytes, Bytes]]
 
           case Some(b) =>
             cur = Some(b)
 
-            println(s"\n\nFIRST: ${b.tuples.map{case (k, _) => k.asInstanceOf[Datom].e}}\n\n")
+            //println(s"\n\nFIRST: ${b.tuples.map{case (k, _) => k.asInstanceOf[Datom].e}}\n\n")
 
             val filtered = b.tuples.filter{case (k, _) => prefixOrd.equiv(prefix, k)}
             stop = filtered.isEmpty
@@ -48,10 +83,10 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
         }
       }
 
-      $this.next(cur.map(_.unique_id))(prefixOrd).map {
+      $this.next(cur.map(_.unique_id))(ord).map {
         case None =>
           cur = None
-          Seq.empty[Tuple2[K, V]]
+          Seq.empty[Tuple2[Bytes, Bytes]]
 
         case Some(b) =>
           cur = Some(b)
@@ -66,7 +101,7 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
 
   }
 
-  def gt(term: K, prefix: Option[K] = None, include: Boolean = false): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V](ord, ord) {
+  /*def gt(term: K, prefix: Option[K] = None, include: Boolean = false): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V](ord, ord) {
 
     override def hasNext(): Future[Boolean] = synchronized {
       if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -222,6 +257,6 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
         }
 
       }
-  }
+  }*/
 
 }

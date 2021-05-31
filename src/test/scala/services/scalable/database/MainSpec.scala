@@ -1,6 +1,5 @@
 package services.scalable.database
 
-import com.google.common.primitives.UnsignedBytes
 import org.apache.commons.lang3.RandomStringUtils
 import org.scalatest.flatspec.AnyFlatSpec
 import org.slf4j.LoggerFactory
@@ -27,15 +26,15 @@ class MainSpec extends AnyFlatSpec {
     val indexId = "demo_db"
 
     implicit val global = ExecutionContext.global
-    implicit val cache = new DefaultCache[Bytes, Bytes](100L * 1024L * 1024L, 10000)
+    implicit val cache = new DefaultCache(100L * 1024L * 1024L, 10000)
     //implicit val storage = new CassandraStorage("indexes", truncate = true)
 
-    implicit val storage = new MemoryStorage[Bytes, Bytes](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    implicit val ctx = new DefaultContext[Bytes, Bytes](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val ctx = new DefaultContext(indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     logger.debug(s"${Await.result(storage.loadOrCreate(indexId), Duration.Inf)}")
 
-    val index = new Index[Bytes, Bytes]()
+    val index = new Index()
 
     val EMPTY = Array.empty[Byte]
 

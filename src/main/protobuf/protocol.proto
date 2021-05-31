@@ -17,6 +17,13 @@ message HelloResponse {
   string msg = 1;
 }
 
+message AVET {
+  google.protobuf.StringValue a = 1;
+  google.protobuf.BytesValue v = 2;
+  google.protobuf.StringValue e = 3;
+  google.protobuf.Int64Value t = 4;
+}
+
 message Datom {
   google.protobuf.StringValue e = 1;
   google.protobuf.StringValue a = 2;
