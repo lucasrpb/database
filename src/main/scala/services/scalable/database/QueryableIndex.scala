@@ -1,8 +1,6 @@
 package services.scalable.database
 
-import services.scalable.database.grpc.Datom
 import services.scalable.index.{AsyncIterator, Block, Context, Index}
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override val ctx: Context[K, V],
