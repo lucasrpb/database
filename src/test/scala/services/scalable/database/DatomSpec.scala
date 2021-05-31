@@ -11,10 +11,12 @@ import services.scalable.index._
 import services.scalable.index.impl._
 import com.google.protobuf.any.Any
 
+import java.lang.annotation.Repeatable
 import java.nio.ByteBuffer
 import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 class DatomSpec extends AnyFlatSpec {
 
@@ -26,25 +28,41 @@ class DatomSpec extends AnyFlatSpec {
 
   "it " should "serialize and order datoms (serialized as array of arrays of bytes) correctly " in {
 
+    val show = new AtomicBoolean(false)
+
     implicit val vaetComp = new Ordering[Datom] {
       val comp = UnsignedBytes.lexicographicalComparator()
 
-      override def compare(x: Datom, y: Datom): Int = {
+      override def compare(search: Datom, x: Datom): Int = {
         //comp.compare(x.toByteArray, y.toByteArray)
 
-        var r = x.a.compareTo(y.a)
+        var r: Int = 0
 
-        if(r != 0) return r
+        if(search.a.isDefined){
+          r = search.a.get.compareTo(x.a.get)
+          if(r != 0) return r
+        }
 
-        r = comp.compare(x.v.toByteArray, y.v.toByteArray)
+        if(show.get() && search.a.isDefined){
+          logger.info(s"${Console.RED_B}search ${search.a.get} v: ${x.v.get.asReadOnlyByteBuffer().getInt}${Console.RESET}")
+        }
 
-        if(r != 0) return r
+        if(search.v.isDefined){
+          r = comp.compare(search.v.get.toByteArray, x.v.get.toByteArray)
+          if(r != 0) return r
+        }
 
-        r = x.e.compareTo(y.e)
+        if(search.e.isDefined){
+          r = search.e.get.compareTo(x.e.get)
+          if(r != 0) return r
+        }
 
-        if(r != 0) return r
+        if(search.t.isDefined){
+          r = search.t.get.compareTo(x.t.get)
+          if(r != 0) return r
+        }
 
-        x.t.compareTo(y.t)
+        r
       }
     }
 
@@ -83,11 +101,11 @@ class DatomSpec extends AnyFlatSpec {
       val binAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(age).flip())
       //val binNow = ByteString.copyFrom(ByteBuffer.allocate(4).putLong(now))
 
-      logger.info(s"to long: ${ByteBuffer.wrap(binAge.toByteArray).getInt}")
+      //logger.info(s"to long: ${ByteBuffer.wrap(binAge.toByteArray).getInt}")
 
       datoms = datoms ++ Seq(
-        Datom(id, "person/:name", ByteString.copyFrom(name.getBytes(Charsets.UTF_8)), now),
-        Datom(id, "person/:age", binAge, now)
+        Datom(Some(id), Some("person/:name"), Some(ByteString.copyFrom(name.getBytes(Charsets.UTF_8))), Some(now)),
+        Datom(Some(id), Some("person/:age"), Some(binAge), Some(now))
       )
     }
 
@@ -95,10 +113,109 @@ class DatomSpec extends AnyFlatSpec {
 
     logger.info(s"result: ${result}")
 
-    val data = Await.result(index.inOrder(), Duration.Inf).filter(_._1.a.compareTo("person/:age") == 0)
-      .map{case (k, _) => s"(${k.a},${k.v.asReadOnlyByteBuffer().getInt()},${k.e})"}
+    var data = Await.result(index.inOrder(), Duration.Inf)/*.filter(_._1.a.compareTo("person/:age") == 0)*/
+      .map{case (k, _) => s"(${k.a},${k.v.get.asReadOnlyByteBuffer().getInt()},${k.e})"}
 
     logger.info(s"\n${data}\n")
+
+    /*val gt = new Ordering[Datom] {
+      override def compare(x: Datom, y: Datom): Int = {
+
+      }
+    }*/
+
+    /*val comp = new Ordering[Datom] {
+      val ubc = UnsignedBytes.lexicographicalComparator()
+
+      override def compare(search: Datom, x: Datom): Int = {
+        /*var r: Int = 0
+
+        if(search.a.isDefined){
+          r = x.a.get.compareTo(search.a.get)
+          if(r != 0) return -1
+        }
+
+        if(search.v.isDefined){
+          r = ubc.compare(x.v.get.toByteArray, search.v.get.toByteArray)
+
+          logger.info(s"${Console.BLUE_B}r: ${r} x ${x.v.get.asReadOnlyByteBuffer().getInt} y: ${search.v.get.asReadOnlyByteBuffer().getInt}${Console.RESET}")
+
+          if(r < 0) return -1
+        }
+
+        if(search.e.isDefined){
+          r = x.e.get.compareTo(search.e.get)
+          if(r != 0) return -1
+        }
+
+        if(search.t.isDefined){
+          r = x.t.get.compareTo(search.t.get)
+        }
+
+        if(r < 0) return -1
+
+        r*/
+
+        var r: Int = 0
+
+        if(search.a.isDefined){
+          r = search.a.get.compareTo(x.a.get)
+          if(r != 0) return r
+        }
+
+        if(search.v.isDefined){
+          r = ubc.compare(x.v.get.toByteArray, search.v.get.toByteArray)
+
+          if(show.get()){
+            logger.info(s"${Console.RED_B}search ${search.v.get.asReadOnlyByteBuffer().getInt} x: ${x.v.get.asReadOnlyByteBuffer().getInt}${Console.RESET}")
+          }
+
+          if(r < 0) return r
+        }
+
+        if(search.e.isDefined){
+          r = search.e.get.compareTo(x.e.get)
+          if(r != 0) return r
+        }
+
+        if(search.t.isDefined){
+          r = search.t.get.compareTo(x.t.get)
+          if(r != 0) return r
+        }
+
+        0
+      }
+    }*/
+
+    show.set(true)
+
+    val prefix = Datom(a = Some("person/:age"))
+
+    //val it = index.gt(Datom(v = Some(age)), prefix = Some(Datom(a = Some("person/:age"))))
+    //val it = index.gt(Datom(a = Some("person/:age"), v = Some(age)))
+
+    //val it = index.lte(Datom(v = Some(age)), prefix = Some(Datom(a = Some("person/:age"))))
+
+    val age = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(70).flip())
+    val minAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(18).flip())
+    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(50).flip())
+
+    val it = index.interval(lowerTerm = Datom(v = Some(minAge)), upperTerm = Datom(v = Some(maxAge)), lowerPrefix = Some(prefix), upperPrefix = Some(prefix))
+
+    def getAll(): Future[Seq[Datom]] = {
+      it.hasNext().flatMap {
+        case true => it.next().flatMap { list =>
+          getAll().map{list.map(_._1) ++ _}
+        }
+        case false => Future.successful(Seq.empty[Datom])
+      }
+    }
+
+    val r = Await.result(getAll(), Duration.Inf)
+
+    //logger.info(s"${Await.result(index.find(Datom(a = Some("person/:age"))), Duration.Inf).map(_._1)}")
+
+    logger.info(s"\n > 70 : ${r.map{k => s"(${k.a},${k.v.get.asReadOnlyByteBuffer().getInt()},${k.e})"}}")
   }
 
 }

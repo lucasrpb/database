@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "google/protobuf/wrappers.proto";
+
 //#options
 option java_multiple_files = true;
 option java_package = "services.scalable.database.grpc";
@@ -16,8 +18,8 @@ message HelloResponse {
 }
 
 message Datom {
-  string e = 1;
-  string a = 2;
-  bytes v = 3;
-  int64 t = 4;
+  google.protobuf.StringValue e = 1;
+  google.protobuf.StringValue a = 2;
+  google.protobuf.BytesValue v = 3;
+  google.protobuf.Int64Value t = 4;
 }

@@ -21,6 +21,8 @@ libraryDependencies ++= Seq(
   "services.scalable" %% "index" % "0.6"
 )
 
-//dependencyOverrides += "foo" %% "foo" % "1.2.2"
+dependencyOverrides += "com.thesamet.scalapb" %% "compilerplugin" % "0.11.1"
+
+PB.protocVersion := "-v3.11.4"
 
 enablePlugins(AkkaGrpcPlugin)
