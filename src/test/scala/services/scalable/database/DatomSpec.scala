@@ -30,7 +30,7 @@ class DatomSpec extends AnyFlatSpec {
 
     val show = new AtomicBoolean(false)
 
-    implicit val vaetComp = new Ordering[Datom] {
+    implicit val avetComp = new Ordering[Datom] {
       val comp = UnsignedBytes.lexicographicalComparator()
 
       override def compare(search: Datom, x: Datom): Int = {
@@ -43,12 +43,13 @@ class DatomSpec extends AnyFlatSpec {
           if(r != 0) return r
         }
 
-        if(show.get() && search.a.isDefined){
-          logger.info(s"${Console.RED_B}search ${search.a.get} v: ${x.v.get.asReadOnlyByteBuffer().getInt}${Console.RESET}")
-        }
-
         if(search.v.isDefined){
           r = comp.compare(search.v.get.toByteArray, x.v.get.toByteArray)
+
+          if(show.get() && search.a.isDefined){
+            logger.info(s"${Console.RED_B}search ${search.a.get} v: ${x.v.get.asReadOnlyByteBuffer().getInt}${Console.RESET}")
+          }
+
           if(r != 0) return r
         }
 
@@ -109,14 +110,15 @@ class DatomSpec extends AnyFlatSpec {
       )
     }
 
-    val result = Await.result(index.insert(datoms.map(_ -> EMPTY_ARRAY)), Duration.Inf)
+    val result = Await.result(index.insert(datoms.map(_ -> EMPTY_ARRAY)).flatMap(_ => ctx.save()), Duration.Inf)
 
     logger.info(s"result: ${result}")
 
-    var data = Await.result(index.inOrder(), Duration.Inf)/*.filter(_._1.a.compareTo("person/:age") == 0)*/
-      .map{case (k, _) => s"(${k.a},${k.v.get.asReadOnlyByteBuffer().getInt()},${k.e})"}
+    val data = Await.result(index.inOrder(), Duration.Inf)/*.filter(_._1.a.compareTo("person/:age") == 0)*/
+    val datas = data.map{case (k, _) => s"(${k.a},${if(k.a.get.compareTo("person/:age") == 0)
+      k.v.get.asReadOnlyByteBuffer().getInt() else new String(k.v.get.toByteArray)},${k.e})"}
 
-    logger.info(s"\n${data}\n")
+    logger.info(s"\n${datas}\n")
 
     /*val gt = new Ordering[Datom] {
       override def compare(x: Datom, y: Datom): Int = {
@@ -198,9 +200,15 @@ class DatomSpec extends AnyFlatSpec {
 
     val age = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(70).flip())
     val minAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(18).flip())
-    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(50).flip())
+    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(40).flip())
 
-    val it = index.interval(lowerTerm = Datom(v = Some(minAge)), upperTerm = Datom(v = Some(maxAge)), lowerPrefix = Some(prefix), upperPrefix = Some(prefix))
+    /*val it = index.interval(lowerTerm = Datom(v = Some(minAge)), upperTerm = Datom(v = Some(maxAge)), lowerPrefix = Some(prefix), upperPrefix = Some(prefix), includeLower = true)
+    it.setLimit(5)*/
+
+    //val it = index.gt(Datom(v = Some(age)), prefix = Some(Datom(a = Some("person/:age"))), true)
+    //it.setLimit(5)
+
+    val it = index.gt(Datom(a = Some("person/:age")))
 
     def getAll(): Future[Seq[Datom]] = {
       it.hasNext().flatMap {
@@ -211,11 +219,43 @@ class DatomSpec extends AnyFlatSpec {
       }
     }
 
-    val r = Await.result(getAll(), Duration.Inf)
+    /*val r = Await.result(getAll(), Duration.Inf)
 
-    //logger.info(s"${Await.result(index.find(Datom(a = Some("person/:age"))), Duration.Inf).map(_._1)}")
+    logger.info(s"\n > 70 : ${r.map{k => s"(${k.a},${k.v.get.asReadOnlyByteBuffer().getInt()},${k.e})"}}\n\n")
 
-    logger.info(s"\n > 70 : ${r.map{k => s"(${k.a},${k.v.get.asReadOnlyByteBuffer().getInt()},${k.e})"}}")
+    val last = r.lastOption
+
+    if(last.isDefined){
+      logger.info(s"searching for last ${last.get.a.get}: ${Await.result(index.find(last.get), Duration.Inf).get._1}")
+    }
+
+    logger.info(s"\ncount: ${index.count()} min: ${Await.result(index.min(), Duration.Inf).get._1} max: ${Await.result(index.max(), Duration.Inf).get._1}")*/
+
+    val first = data.collectFirst {
+      case x if x._1.a.get.compareTo("person/:name") == 0 => x
+    }
+
+    val it2 = index.findAll(Datom(a = Some("person/:name")))
+
+    def findAll(): Future[Seq[Datom]] = {
+      it2.hasNext().flatMap {
+        case true => it2.next().flatMap { list =>
+          findAll().map{list.map(_._1) ++ _}
+        }
+        case false => Future.successful(Seq.empty[Datom])
+      }
+    }
+
+    //val r2 = Await.result(findAll(), Duration.Inf)
+    //logger.info(s"\n\nFIND ALL WITH PREFIX: first: ${first.get._1.e} ${r2.map{k => s"(${k.a},${k.e})"}}\n\n")
+
+   // val r3 = Await.result(index.findPath(Datom(a = Some("person/:name")))(cp), Duration.Inf).get.tuples.map{case (k, _) => k.e}
+
+    //val r3 = Await.result(findAll(), Duration.Inf).map(_.e.get)
+
+    val r4 = Await.result(getAll(), Duration.Inf).map{d => d.a.get -> d.v.get.asReadOnlyByteBuffer().getInt()}
+
+    logger.info(s"confirmed first: ${first.get._1.e} find first: ${r4}")
   }
 
 }
