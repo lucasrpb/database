@@ -25,6 +25,4 @@ libraryDependencies ++= Seq(
 
 dependencyOverrides += "com.thesamet.scalapb" %% "compilerplugin" % "0.11.1"
 
-PB.protocVersion := "-v3.11.4"
-
 enablePlugins(AkkaGrpcPlugin)

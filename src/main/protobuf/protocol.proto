@@ -18,10 +18,10 @@ message HelloResponse {
 }
 
 message AVET {
-  google.protobuf.StringValue a = 1;
-  google.protobuf.BytesValue v = 2;
-  google.protobuf.StringValue e = 3;
-  google.protobuf.Int64Value t = 4;
+  string a = 1;
+  bytes v = 2;
+  string e = 3;
+  int64 t = 4;
 }
 
 message Datom {
