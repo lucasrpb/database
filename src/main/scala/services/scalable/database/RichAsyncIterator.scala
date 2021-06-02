@@ -1,37 +1,28 @@
 package services.scalable.database
 
-import services.scalable.index.{AsyncIterator, Block, Bytes}
+import services.scalable.index.{AsyncIterator, Block, Bytes, Tuple}
 
-abstract class RichAsyncIterator(protected var prefixOrd: Ordering[Bytes], protected var termOrd: Ordering[Bytes])
-  extends AsyncIterator[Seq[Tuple2[Bytes, Bytes]]] {
+abstract class RichAsyncIterator[K, V]() extends AsyncIterator[Seq[Tuple[K, V]]] {
 
   protected var limit = Int.MaxValue
   protected var counter = 0
 
-  protected var filter: (Bytes, Bytes) => Boolean = (_, _) => true
+  protected var filter: (K, V) => Boolean = (_, _) => true
 
-  protected var cur: Option[Block] = None
+  protected var cur: Option[Block[K, V]] = None
 
   protected var firstTime = false
   protected var stop = false
-
-  def setPrefixOrdering(ordering: Ordering[Bytes]): Unit = {
-    this.prefixOrd = ordering
-  }
-
-  def setTermOrdering(ordering: Ordering[Bytes]): Unit = {
-    this.termOrd = ordering
-  }
 
   def setLimit(lim: Int): Unit = {
     this.limit = lim
   }
 
-  def setFilter(f: (Bytes, Bytes) => Boolean): Unit = synchronized {
+  def setFilter(f: (K, V) => Boolean): Unit = synchronized {
     this.filter = f
   }
 
-  def checkCounter(filtered: Seq[Tuple2[Bytes, Bytes]]): Seq[Tuple2[Bytes, Bytes]] = synchronized {
+  def checkCounter(filtered: Seq[Tuple[K, V]]): Seq[Tuple2[K, V]] = synchronized {
     val len = filtered.length
 
     if(counter + len >= limit){

@@ -1,9 +1,9 @@
 organization := "services.scalable"
 name := "database"
 
-version := "0.2"
+version := "master"
 
-scalaVersion := "2.12.13"
+scalaVersion := "2.13.6"
 
 val jacksonVersion = "2.12.3"
 lazy val akkaVersion = "2.6.14"
@@ -20,7 +20,7 @@ libraryDependencies ++= Seq(
 
   "io.vertx" % "vertx-json-schema" % "4.0.3",
 
-  "services.scalable" %% "index" % "0.7"
+  "services.scalable" %% "index" % "0.1"
 )
 
 dependencyOverrides += "com.thesamet.scalapb" %% "compilerplugin" % "0.11.1"

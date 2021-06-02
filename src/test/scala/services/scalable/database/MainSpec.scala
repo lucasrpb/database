@@ -1,74 +1,143 @@
 package services.scalable.database
 
+import com.google.common.base.Charsets
+import com.google.common.primitives.UnsignedBytes
+import com.google.protobuf.ByteString
 import org.apache.commons.lang3.RandomStringUtils
 import org.scalatest.flatspec.AnyFlatSpec
 import org.slf4j.LoggerFactory
+import services.scalable.database.grpc._
 import services.scalable.index._
 import services.scalable.index.impl._
 
+import java.nio.ByteBuffer
 import java.util.concurrent.ThreadLocalRandom
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
 
 class MainSpec extends AnyFlatSpec {
+
+  implicit def strToBytes(str: String): Bytes = str.getBytes(Charsets.UTF_8)
+
+  val EMPTY_ARRAY = Array.empty[Byte]
 
   val rand = ThreadLocalRandom.current()
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  "it " should "execute operations serially and successfully " in {
+  "it " should "serialize and order datoms (serialized as array of arrays of bytes) correctly " in {
 
-    import services.scalable.index.DefaultComparators._
+    implicit val avetComp = new Ordering[Datom] {
+      val comp = UnsignedBytes.lexicographicalComparator()
 
-    val NUM_LEAF_ENTRIES = 64
-    val NUM_META_ENTRIES = 64
+      override def compare(search: Datom, x: Datom): Int = {
+        var r: Int = 0
+
+        if(search.a.isDefined && x.a.isDefined){
+          r = search.a.get.compareTo(x.a.get)
+          if(r != 0) return r
+        }
+
+        if(search.v.isDefined && x.v.isDefined){
+          r = comp.compare(search.v.get.toByteArray, x.v.get.toByteArray)
+          if(r != 0) return r
+        }
+
+        if(search.e.isDefined && x.e.isDefined){
+          r = search.e.get.compareTo(x.e.get)
+          if(r != 0) return r
+        }
+
+        if(search.t.isDefined && x.t.isDefined){
+          r = search.t.get.compareTo(x.t.get)
+          if(r != 0) return r
+        }
+
+        r
+      }
+    }
+
+    val NUM_LEAF_ENTRIES = 8
+    val NUM_META_ENTRIES = 8
 
     val indexId = "demo_db"
 
-    implicit val global = ExecutionContext.global
-    implicit val cache = new DefaultCache(100L * 1024L * 1024L, 10000)
-    //implicit val storage = new CassandraStorage("indexes", truncate = true)
+    type K = Datom
+    type V = Bytes
 
-    implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    implicit val ctx = new DefaultContext(indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val cache = new DefaultCache[K, V](100L * 1024L * 1024L, 10000)
+
+    implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val ctx = new DefaultContext[K, V](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     logger.debug(s"${Await.result(storage.loadOrCreate(indexId), Duration.Inf)}")
 
-    val index = new Index()
+    val index = new QueryableIndex[K, V]()
 
-    val EMPTY = Array.empty[Byte]
+    val n = 100
 
-    var tasks = Seq.empty[() => Future[Int]]
+    var datoms = Seq.empty[Datom]
 
-    val m0 = Runtime.getRuntime.totalMemory()
+    val colors = Seq("red", "green", "blue", "magenta", "cyan", "purple", "yellow", "pink")
 
-    for(i<-0 until 100){
-      val list = (0 until 1000).map{_ => RandomStringUtils.randomAlphanumeric(10).getBytes() -> EMPTY}
+    for(i<-0 until n){
+      val id = RandomStringUtils.randomAlphanumeric(5)
+      val name = RandomStringUtils.randomAlphanumeric(5)
+      val age = rand.nextInt(18, 100)
+      val now = System.currentTimeMillis()
 
-      // Defer the operation using a callback
-      tasks = tasks :+ (() => index.insert(list).map { n =>
-        logger.debug(s"inserted at step ${i} inserted ${list.length}")
-        n
-      }.recover {
-        case t: Throwable => logger.debug(s"${t}")
-          0
-      })
+      val binAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(age).flip())
+      //val binNow = ByteString.copyFrom(ByteBuffer.allocate(4).putLong(now))
+
+      //logger.info(s"to long: ${ByteBuffer.wrap(binAge.toByteArray).getInt}")
+
+      val color = colors(rand.nextInt(0, colors.length))
+
+      datoms = datoms ++ Seq(
+        Datom(e = Some(id), a = Some("person/:name"), v = Some(ByteString.copyFrom(name.getBytes(Charsets.UTF_8))), t = Some(now)),
+        Datom(e = Some(id), a = Some("person/:age"), v = Some(binAge), t = Some(now)),
+        Datom(e = Some(id), a = Some("person/:color"), v = Some(ByteString.copyFrom(color)), t = Some(now))
+      )
     }
 
-    Await.result(serialiseFutures(tasks)(_.apply()), Duration.Inf)
+    val result = Await.result(index.insert(datoms.map(_ -> EMPTY_ARRAY).map {  case (avet, _) =>
+      avet -> EMPTY_ARRAY
+    }).flatMap(_ => ctx.save()), Duration.Inf)
 
-    val mem = m0 - Runtime.getRuntime.freeMemory()
+    logger.info(s"result: ${result}")
 
-    logger.debug(s"${Await.result(ctx.save(), Duration.Inf)}")
+    val data = Await.result(index.inOrder(), Duration.Inf).map { case (avet, _) =>
+      avet.getA -> (if(avet.getA.compareTo("person/:age") == 0) avet.getV.asReadOnlyByteBuffer().getInt()
+        else new String(avet.getV.toByteArray)) -> avet.getE
+    }
 
-    /*logger.debug(Await.result(index.inOrder(), Duration.Inf).map{case (k, _) =>
-      new String(k)
-    })*/
+    logger.info(s"${Console.GREEN_B}data: ${data}${Console.RESET}\n")
 
-    logger.debug(s"${index.ctx.num_elements}")
+    val age =  ByteString.copyFrom(ByteBuffer.allocate(4).putInt(70).flip())
+    val minAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(20).flip())
+    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(40).flip())
 
-    logger.debug(s"${Console.RED_B}USED MEMORY: ${mem/(1024*1024)} KBytes${Console.RESET}")
+    val it = index.gt(Datom(a = Some("person/:age"), v = Some(age)), inclusive = true)
+
+    //it.setLimit(5)
+
+    def findAll(): Future[Seq[Datom]] = {
+      it.hasNext().flatMap {
+        case true => it.next().flatMap { list =>
+          findAll().map{list.map(_._1) ++ _}
+        }
+        case false => Future.successful(Seq.empty[Datom])
+      }
+    }
+
+    val r = Await.result(findAll(), Duration.Inf).map { avet =>
+      avet.getA -> (if(avet.getA.compareTo("person/:age") == 0) avet.getV.asReadOnlyByteBuffer().getInt()
+      else new String(avet.getV.toByteArray)) -> avet.getE
+    }
+
+    logger.info(s"\nresult: ${r}")
+
   }
-
 
 }

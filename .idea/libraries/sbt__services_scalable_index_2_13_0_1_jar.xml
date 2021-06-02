@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="sbt: services.scalable:index_2.13:0.1:jar">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.ivy2/local/services.scalable/index_2.13/0.1/jars/index_2.13.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$USER_HOME$/.ivy2/local/services.scalable/index_2.13/0.1/docs/index_2.13-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$USER_HOME$/.ivy2/local/services.scalable/index_2.13/0.1/srcs/index_2.13-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>
