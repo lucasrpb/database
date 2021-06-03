@@ -116,9 +116,19 @@ class MainSpec extends AnyFlatSpec {
 
     val age =  ByteString.copyFrom(ByteBuffer.allocate(4).putInt(70).flip())
     val minAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(20).flip())
-    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(40).flip())
+    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(50).flip())
 
-    val it = index.gt(Datom(a = Some("person/:age"), v = Some(age)), inclusive = true)
+    //val it = index.gt(term = Datom(v = Some(age)), prefix = Some(Datom(a = Some("person/:age"))), inclusive = true)
+    //val it = index.gt(Datom(a = Some("person/:color")), inclusive = true)
+
+    //val it = index.lt(term = Datom(v = Some(age)), prefix = Some(Datom(a = Some("person/:age"))), inclusive = true)
+    //val it = index.lt(Datom(a = Some("person/:color"), v = Some(age)), inclusive = true)
+
+    /*val it = index.interval(lowerTerm = Datom(v = Some(minAge)), upperTerm = Datom(v = Some(maxAge)),
+      lowerPrefix = Some(Datom(a = Some("person/:age"))), upperPrefix = Some(Datom(a = Some("person/:age"))))*/
+
+    val it = index.interval(lowerTerm = Datom(v = Some(minAge)), upperTerm = Datom(v = Some(ByteString.copyFrom("blue".getBytes(Charsets.UTF_8)))),
+      lowerPrefix = Some(Datom(a = Some("person/:age"))), upperPrefix = Some(Datom(a = Some("person/:color"))))
 
     //it.setLimit(5)
 
