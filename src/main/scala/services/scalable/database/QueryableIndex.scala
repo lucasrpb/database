@@ -20,7 +20,13 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
           if(r != 0) return r
         }
 
-        ord.compare(term, y)
+        val r = ord.compare(term, y)
+
+        /*
+          * If not inclusive we can fall into an exceptional case where the stop flag is set to true even when elements
+          *  to iterate on the next block! So we jump straight to it.
+         */
+        if(!inclusive && r == 0) 1 else r
       }
     }
 
@@ -44,8 +50,6 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
             cur = Some(b)
 
             val filtered = b.tuples.filter{case (k, _) => check(k) }
-            stop = filtered.isEmpty
-
             checkCounter(filtered.filter{case (k, v) => filter(k, v)})
         }
       }
@@ -103,9 +107,9 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
           case Some(b) =>
             cur = Some(b)
 
-            println(b.tuples.map(_._1.asInstanceOf[Datom]).map{ d =>
+            /*println(b.tuples.map(_._1.asInstanceOf[Datom]).map{ d =>
               d.getA -> d.getE -> d.getV.asReadOnlyByteBuffer().getInt()
-            })
+            })*/
 
             val filtered = b.tuples.filter{case (k, _) => check(k) }
             stop = filtered.isEmpty
@@ -141,7 +145,13 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
           if(r != 0) return r
         }
 
-        ord.compare(lowerTerm, y)
+        val r = ord.compare(lowerTerm, y)
+
+        /*
+          * If not inclusive we can fall into an exceptional case where the stop flag is set to true even when elements
+          *  to iterate on the next block! So we jump straight to it.
+         */
+        if(!lowerInclusive && r == 0) 1 else r
       }
     }
 
@@ -165,9 +175,9 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
           case Some(b) =>
             cur = Some(b)
 
-            println(b.tuples.map(_._1.asInstanceOf[Datom]).map{ d =>
+            /*println(b.tuples.map(_._1.asInstanceOf[Datom]).map{ d =>
               d.getA -> d.getE -> d.getV.asReadOnlyByteBuffer().getInt()
-            })
+            })*/
 
             val filtered = b.tuples.filter{case (k, v) => check(k)}
             stop = filtered.isEmpty

@@ -16,7 +16,9 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
-class MainSpec extends AnyFlatSpec {
+class RangeSpec extends AnyFlatSpec with Repeatable {
+
+  override val times = 1000
 
   implicit def strToBytes(str: String): Bytes = str.getBytes(Charsets.UTF_8)
 
@@ -26,7 +28,7 @@ class MainSpec extends AnyFlatSpec {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  "it " should "serialize and order datoms (serialized as array of arrays of bytes) correctly " in {
+  "ranges " should " be equal " in {
 
     implicit val avetComp = new Ordering[Datom] {
       val comp = UnsignedBytes.lexicographicalComparator()
@@ -75,22 +77,20 @@ class MainSpec extends AnyFlatSpec {
 
     val index = new QueryableIndex[K, V]()
 
-    val n = 100
+    val n = rand.nextInt(1, 1000)
 
     var datoms = Seq.empty[Datom]
 
     val colors = Seq("red", "green", "blue", "magenta", "cyan", "purple", "yellow", "pink")
+    val properties = Seq("person/:name", "person/:age", "person/:color")
 
     for(i<-0 until n){
-      val id = RandomStringUtils.randomAlphanumeric(5)
-      val name = RandomStringUtils.randomAlphanumeric(5)
-      val age = rand.nextInt(18, 100)
+      val id = RandomStringUtils.randomAlphanumeric(6)
+      val name = RandomStringUtils.randomAlphanumeric(6)
+      val age = rand.nextInt(18, 1000)
       val now = System.currentTimeMillis()
 
       val binAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(age).flip())
-      //val binNow = ByteString.copyFrom(ByteBuffer.allocate(4).putLong(now))
-
-      //logger.info(s"to long: ${ByteBuffer.wrap(binAge.toByteArray).getInt}")
 
       val color = colors(rand.nextInt(0, colors.length))
 
@@ -105,7 +105,7 @@ class MainSpec extends AnyFlatSpec {
       avet -> EMPTY_ARRAY
     }).flatMap(_ => ctx.save()), Duration.Inf)
 
-    logger.info(s"result: ${result}")
+    //logger.info(s"result: ${result}")
 
     val data = Await.result(index.inOrder(), Duration.Inf).map { case (avet, _) =>
       avet.getA -> (if(avet.getA.compareTo("person/:age") == 0) avet.getV.asReadOnlyByteBuffer().getInt()
@@ -114,39 +114,77 @@ class MainSpec extends AnyFlatSpec {
 
     logger.info(s"${Console.GREEN_B}data: ${data}${Console.RESET}\n")
 
-    val age =  ByteString.copyFrom(ByteBuffer.allocate(4).putInt(70).flip())
-    val minAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(20).flip())
-    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(50).flip())
+    val ageInt = rand.nextInt(18, 1000)
+    val minAgeInt = rand.nextInt(18, 1000)
+    val maxAgeInt = rand.nextInt(minAgeInt, 1000)
 
-    val it = index.gt(term = Datom(v = Some(age)), prefix = Some(Datom(a = Some("person/:age"))), inclusive = true)
-    //val it = index.gt(Datom(a = Some("person/:color")), inclusive = true)
+    val ageBin =  ByteString.copyFrom(ByteBuffer.allocate(4).putInt(ageInt).flip())
+    val minAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(minAgeInt).flip())
+    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(maxAgeInt).flip())
 
-    //val it = index.lt(term = Datom(v = Some(age)), prefix = Some(Datom(a = Some("person/:age"))), inclusive = true)
-    //val it = index.lt(Datom(a = Some("person/:color"), v = Some(age)), inclusive = true)
+    datoms = datoms.sorted
 
-    /*val it = index.interval(lowerTerm = Datom(v = Some(minAge)), upperTerm = Datom(v = Some(maxAge)),
-      lowerPrefix = Some(Datom(a = Some("person/:age"))), upperPrefix = Some(Datom(a = Some("person/:age"))))*/
-
-    /*val it = index.interval(lowerTerm = Datom(v = Some(minAge)), upperTerm = Datom(v = Some(ByteString.copyFrom("blue".getBytes(Charsets.UTF_8)))),
-      lowerPrefix = Some(Datom(a = Some("person/:age"))), upperPrefix = Some(Datom(a = Some("person/:color"))))
-*/
     //it.setLimit(5)
 
-    def findAll(): Future[Seq[Datom]] = {
-      it.hasNext().flatMap {
-        case true => it.next().flatMap { list =>
-          findAll().map{list.map(_._1) ++ _}
+    def prettyPrint(list: Seq[Datom]): String = {
+      list.map { avet =>
+        avet.getA -> avet.getV.asReadOnlyByteBuffer().getInt()
+      }.toString()
+    }
+
+    def test(it: RichAsyncIterator[Datom, Bytes], cond: Datom => Boolean)(ctx: String): Unit = {
+
+      def findAll(): Future[Seq[Datom]] = {
+        it.hasNext().flatMap {
+          case true => it.next().flatMap { list =>
+            findAll().map{list.map(_._1) ++ _}
+          }
+          case false => Future.successful(Seq.empty[Datom])
         }
-        case false => Future.successful(Seq.empty[Datom])
       }
+
+      val result = Await.result(findAll(), Duration.Inf)
+
+      logger.info(ctx)
+      //logger.info(s"result: ${result}\n")
+
+      val shouldbe = datoms.filter{_.getA.compareTo("person/:age") == 0}.filter { d =>
+        cond(d)
+      }
+
+      println("should be: ", prettyPrint(shouldbe))
+      println()
+      println("calculated: ", prettyPrint(result))
+
+      assert(result == shouldbe)
     }
 
-    val r = Await.result(findAll(), Duration.Inf).map { avet =>
-      avet.getA -> (if(avet.getA.compareTo("person/:age") == 0) avet.getV.asReadOnlyByteBuffer().getInt()
-      else new String(avet.getV.toByteArray)) -> avet.getE
-    }
+    var inclusive = rand.nextBoolean()
 
-    logger.info(s"\nresult: ${r}")
+    test(index.gt(term = Datom(v = Some(ageBin)), prefix = Some(Datom(a = Some("person/:age"))), inclusive = inclusive), d => {
+      val age = d.getV.asReadOnlyByteBuffer().getInt()
+      inclusive && age >= ageInt || age > ageInt
+    })(s"> age: ${ageInt} inclusive: ${inclusive}")
+
+    inclusive = rand.nextBoolean()
+
+    logger.info("\n")
+
+    test(index.lt(term = Datom(v = Some(maxAge)), prefix = Some(Datom(a = Some("person/:age"))), inclusive = inclusive), d => {
+      val age = d.getV.asReadOnlyByteBuffer().getInt()
+      inclusive && age <= maxAgeInt || age < maxAgeInt
+    })(s"< age: ${maxAgeInt} inclusive: ${inclusive}")
+
+    inclusive = rand.nextBoolean()
+
+    logger.info("\n")
+
+    test(index.interval(lowerTerm = Datom(v = Some(minAge)), lowerPrefix = Some(Datom(a = Some("person/:age"))),
+      upperTerm = Datom(v = Some(maxAge)), upperPrefix = Some(Datom(a = Some("person/:age"))),
+      lowerInclusive = inclusive, upperInclusive = inclusive), d => {
+      val age = d.getV.asReadOnlyByteBuffer().getInt()
+      (inclusive && age >= minAgeInt || age > minAgeInt) && (inclusive && age <= maxAgeInt || age < maxAgeInt)
+    })(s"interval min: ${minAgeInt} max: ${maxAgeInt} inclusive: ${inclusive}")
 
   }
 
