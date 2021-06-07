@@ -30,3 +30,11 @@ message Datom {
   google.protobuf.BytesValue v = 3;
   google.protobuf.Int64Value t = 4;
 }
+
+/*
+message Datom {
+  string e = 1;
+  string a = 2;
+  bytes v = 3;
+  int64 t = 4;
+}*/
