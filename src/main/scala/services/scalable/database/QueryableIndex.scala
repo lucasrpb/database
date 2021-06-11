@@ -1,23 +1,20 @@
 package services.scalable.database
 
-import org.checkerframework.checker.units.qual.Prefix
 import services.scalable.database.grpc.Datom
-import services.scalable.index.{Block, Context, Index, Leaf, Meta, Tuple}
+import services.scalable.index.{Context, Index, Tuple}
 
-import java.util.concurrent.ConcurrentLinkedQueue
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 
 class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override val ctx: Context[K, V],
                            implicit val ord: Ordering[K]) extends Index()(ec, ctx) {
 
-  val $this = this
+  override val $this = this
 
-  def gt(term: K, prefix: Option[K] = None, inclusive: Boolean = false): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V] {
+  def gt(term: K, inclusive: Boolean = false)(implicit prefixOrder: Ordering[K]): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V] {
 
     val searchOrd = new Ordering[K]{
       override def compare(x: K, y: K): Int = {
-        val r = ord.compare(x, y)
+        val r = ord.compare(term, y)
 
         if(r != 0) return r
 
@@ -31,7 +28,7 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
     }
 
     def check(k: K): Boolean = {
-      (prefix.isEmpty || ord.equiv(prefix.get, k)) && (inclusive && ord.gteq(k, term) || ord.gt(k, term))
+      prefixOrder.equiv(k, k) && (inclusive && ord.gteq(k, term) || ord.gt(k, term))
     }
 
     override def next(): Future[Seq[Tuple[K, V]]] = {
@@ -48,10 +45,10 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
 
             println()
 
-            /*println(b.tuples.map { case (k, _) =>
+            println(b.tuples.map { case (k, _) =>
               val d = k.asInstanceOf[Datom]
               d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-            })*/
+            })
 
            // println(b.tuples.map(_._1))
 
@@ -60,9 +57,13 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
             val filtered = b.tuples.filter{case (k, _) => check(k) }
             stop = filtered.isEmpty
 
-            if(!inclusive && filtered.isEmpty && b.tuples.exists{case(k, _) => ord.equiv(k, term)}){
+            /**
+             * Exception in the case of having only the term left in the block because of the
+             * inclusive flag been set to false. This way we miss out the next elements.
+             */
+            /*if(!inclusive && filtered.isEmpty && b.tuples.exists{case(k, _) => termOrdering.equiv(k, term)}){
               stop = false
-            }
+            }*/
 
             checkCounter(filtered.filter{case (k, v) => filter(k, v)})
         }
@@ -76,14 +77,14 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
         case Some(b) =>
           cur = Some(b)
 
-          println()
+          /*println()
 
           println(b.tuples.map { case (k, _) =>
             val d = k.asInstanceOf[Datom]
             d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
           })
 
-          println()
+          println()*/
 
           val filtered = b.tuples.filter{case (k, _) => check(k) }
           stop = filtered.isEmpty
@@ -93,17 +94,15 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
     }
   }
 
-  def lt(term: K, prefix: Option[K] = None, inclusive: Boolean = false): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V] {
+  def lt(term: K, inclusive: Boolean = false)(implicit prefixOrder: Ordering[K]): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V] {
 
     val ltOrd = new Ordering[K] {
       override def compare(x: K, y: K): Int = {
+        val r = prefixOrder.compare(x, y)
 
-        if(prefix.isDefined){
-          val r = ord.compare(prefix.get, y)
-          if(r != 0) return r
-        }
+        if(r != 0) return r
 
-       -1
+        -1
       }
     }
 
@@ -113,7 +112,7 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
     }
 
     protected def check(k: K): Boolean = {
-      (prefix.isEmpty || ord.equiv(prefix.get, k)) && (inclusive && ord.lteq(k, term) || ord.lt(k, term))
+      prefixOrder.equiv(k, k) && (inclusive && ord.lteq(k, term) || ord.lt(k, term))
     }
 
     override def next(): Future[Seq[Tuple[K, V]]] = {
@@ -140,10 +139,6 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
             val filtered = b.tuples.filter{case (k, _) => check(k) }
             stop = filtered.isEmpty
 
-            if(!inclusive && filtered.isEmpty && b.tuples.exists{case(k, _) => ord.equiv(k, term)}){
-              stop = false
-            }
-
             checkCounter(filtered.filter{case (k, v) => filter(k, v)})
         }
       }
@@ -164,12 +159,12 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
     }
   }
 
-  def interval(lowerTerm: K, upperTerm: K, lowerPrefix: Option[K] = None, upperPrefix: Option[K],
-               lowerInclusive: Boolean = true, upperInclusive: Boolean = true): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V] {
+  def interval(lowerTerm: K, upperTerm: K, lowerInclusive: Boolean = true, upperInclusive: Boolean = true)
+              (implicit lowerPrefixOrd: Ordering[K], upperPrefixOrd: Ordering[K]): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V] {
 
     val searchOrd = new Ordering[K]{
       override def compare(x: K, y: K): Int = {
-        val r = ord.compare(x, y)
+        val r = ord.compare(lowerTerm, y)
 
         if(r != 0) return r
 
@@ -177,23 +172,47 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
       }
     }
 
-    override def hasNext(): Future[Boolean] = {
-      if(!firstTime) return Future.successful(ctx.root.isDefined)
-      Future.successful(!stop && cur.isDefined)
-    }
+      override def hasNext(): Future[Boolean] = {
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        Future.successful(!stop && cur.isDefined)
+      }
 
-    def check(k: K): Boolean = {
-      (lowerPrefix.isEmpty || ord.gteq(lowerPrefix.get, lowerTerm)) &&
-        (upperPrefix.isEmpty || ord.lteq(upperPrefix.get, upperTerm)) &&
-      (lowerInclusive && ord.gteq(k, lowerTerm) || ord.gt(k, lowerTerm)) &&
-        (upperInclusive && ord.lteq(k, upperTerm) || ord.lt(k, upperTerm))
-    }
+      def check(k: K): Boolean = {
+        (lowerPrefixOrd.equiv(k, k)) && (lowerInclusive && ord.gteq(k, lowerTerm) || ord.gt(k, lowerTerm)) &&
+          (upperPrefixOrd.equiv(k, k) && (upperInclusive && ord.lteq(k, upperTerm) || ord.lt(k, upperTerm)))
+      }
 
-    override def next(): Future[Seq[Tuple[K, V]]] = {
-      if(!firstTime){
-        firstTime = true
+      override def next(): Future[Seq[Tuple[K, V]]] = {
+        if(!firstTime){
+          firstTime = true
 
-        return findPath(lowerTerm)(searchOrd).map {
+          return findPath(lowerTerm)(searchOrd).flatMap {
+            case None =>
+              cur = None
+              Future.successful(Seq.empty[Tuple[K, V]])
+
+            case Some(b) =>
+              cur = Some(b)
+
+              println()
+
+              println(b.tuples.map { case (k, _) =>
+                val d = k.asInstanceOf[Datom]
+                d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
+              })
+
+              // println(b.tuples.map(_._1))
+
+              println()
+
+              val filtered = b.tuples.filter{case (k, _) => check(k) }
+              stop = filtered.isEmpty
+
+              Future.successful(checkCounter(filtered.filter{case (k, v) => filter(k, v)}))
+          }
+        }
+
+        $this.next(cur.map(_.unique_id))(ord).map {
           case None =>
             cur = None
             Seq.empty[Tuple[K, V]]
@@ -201,54 +220,22 @@ class QueryableIndex[K, V](override implicit val ec: ExecutionContext, override 
           case Some(b) =>
             cur = Some(b)
 
-            /*println()
+            println()
 
             println(b.tuples.map { case (k, _) =>
               val d = k.asInstanceOf[Datom]
               d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
             })
 
-             //println(b.tuples.map(_._1))
-
-            println()*/
+            println()
 
             val filtered = b.tuples.filter{case (k, _) => check(k) }
             stop = filtered.isEmpty
 
-            if(!lowerInclusive && filtered.isEmpty && b.tuples.exists{case(k, _) => ord.equiv(k, lowerTerm)} ||
-              !upperInclusive && filtered.isEmpty && b.tuples.exists{case (k, _) => ord.equiv(k, upperTerm)}){
-              stop = false
-            }
-
-            checkCounter(filtered.filter{case (k, v) => filter(k, v)})
+            checkCounter(filtered.filter{case (k, v) => filter(k, v) })
         }
       }
 
-      $this.next(cur.map(_.unique_id))(ord).map {
-        case None =>
-          cur = None
-          Seq.empty[Tuple[K, V]]
-
-        case Some(b) =>
-          cur = Some(b)
-
-          /*println()
-
-          println(b.tuples.map { case (k, _) =>
-            val d = k.asInstanceOf[Datom]
-            d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-          })
-
-          println(b.tuples.map(_._1))
-
-          println()*/
-
-          val filtered = b.tuples.filter{case (k, _) => check(k) }
-          stop = filtered.isEmpty
-
-          checkCounter(filtered.filter{case (k, v) => filter(k, v) })
-      }
-    }
   }
 
 }

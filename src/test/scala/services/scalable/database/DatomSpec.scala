@@ -35,8 +35,9 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
 
   "it " should "serialize and order datoms (serialized as array of arrays of bytes) correctly " in {
 
-    implicit val avetOrdering = new Ordering[Datom] {
-      val comp = UnsignedBytes.lexicographicalComparator()
+    val comp = UnsignedBytes.lexicographicalComparator()
+
+    implicit val ord = new Ordering[Datom] {
 
       override def compare(search: K, x: K): Int = {
         var r: Int = 0
@@ -82,7 +83,7 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
 
     val index = new QueryableIndex()
 
-    val n = rand.nextInt(1, 1000)
+    val n = 100//rand.nextInt(1, 1000)
 
     var datoms = Seq.empty[Datom]
 
@@ -115,15 +116,17 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
 
     logger.info(s"result: ${result}")
 
-    val data = Await.result(index.inOrder(), Duration.Inf).map { case (d, _) =>
+    var iter = index.inOrder()
+
+    val data = Await.result(TestHelper.all(iter), Duration.Inf).map { case (d, _) =>
       d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
     }
 
     logger.info(s"${Console.GREEN_B}data: ${data}${Console.RESET}\n")
 
     val age =  ByteString.copyFrom(ByteBuffer.allocate(4).putInt(rand.nextInt(18, 100)).flip())
-    val minAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(20).flip())
-    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(50).flip())
+    val minAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(rand.nextInt(20, 100)).flip())
+    val maxAge = ByteString.copyFrom(ByteBuffer.allocate(4).putInt(rand.nextInt(30, 100)).flip())
 
     val inclusive = rand.nextBoolean()
     val upperInclusive = rand.nextBoolean()
@@ -135,52 +138,75 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
     val names = datoms.filter(_.a.get.compareTo("person/:name") == 0)
     val abs = datoms.filter(_.a.get.compareTo("person/:ab") == 0)
 
-    val p = "person/:age"//properties(rand.nextInt(0, properties.length))
-    val pupper = properties(rand.nextInt(0, properties.length))
+    val p = properties(rand.nextInt(0, properties.length))
+    val pgreater = properties.filter{_.compareTo(p) >= 0}
+    val pupper = pgreater(rand.nextInt(0, pgreater.length))//properties(rand.nextInt(0, properties.length))
 
-    val v = p match {
+    var v = p match {
       case p if p.compareTo("person/:ab") == 0 => abs(rand.nextInt(0, abs.length)).getV
-      case p if p.compareTo("person/:age") == 0 => age
+      case p if p.compareTo("person/:age") == 0 => minAge
       case p if p.compareTo("person/:color") == 0 => ByteString.copyFrom(colors(rand.nextInt(0, colors.length)).getBytes(Charsets.UTF_8))
       case p if p.compareTo("person/:name") == 0 => names(rand.nextInt(0, names.length)).getV
     }
 
-    val vupper = pupper match {
+    var vupper = pupper match {
       case p if p.compareTo("person/:ab") == 0 => abs(rand.nextInt(0, abs.length)).getV
       case p if p.compareTo("person/:age") == 0 => maxAge
       case p if p.compareTo("person/:color") == 0 => ByteString.copyFrom(colors(rand.nextInt(0, colors.length)).getBytes(Charsets.UTF_8))
       case p if p.compareTo("person/:name") == 0 => names(rand.nextInt(0, names.length)).getV
     }
 
-    val prefixPresent = rand.nextBoolean()
-    val upperPrefixPresent = rand.nextBoolean()
+    if(comp.compare(vupper.toByteArray, v.toByteArray) < 0){
+      val aux = vupper
+      vupper = v
+      v = aux
+    }
 
-    val term = if(prefixPresent || rand.nextBoolean()) Datom(a = Some(p), v = Some(v)) else Datom(a = Some(p))
+    val prefixPresent = rand.nextBoolean()
+
+    /*val term = if(prefixPresent) Datom(a = Some(p), v = Some(v)) else Datom(a = Some(p))
     val prefix: Option[Datom] = if(prefixPresent) Some(Datom(a = Some(p))) else None
 
-    val upperTerm = if(upperPrefixPresent || rand.nextBoolean()) Datom(a = Some(pupper), v = Some(vupper)) else Datom(a = Some(pupper))
-    val upperPrefix: Option[Datom] = if(upperPrefixPresent) Some(Datom(a = Some(pupper))) else None
+    val upperTerm = if(upperPrefixPresent) Datom(a = Some(pupper), v = Some(vupper)) else Datom(a = Some(pupper))
+    val upperPrefix: Option[Datom] = if(upperPrefixPresent) Some(Datom(a = Some(pupper))) else None*/
 
-    /*val term = Datom(a = Some(p), v = Some(minAge))
-    val upperTerm = Datom(a = Some(p), v = Some(maxAge))
+    val term = Datom(a = Some(p), v = Some(v))
+    val prefix = if(prefixPresent) Some(Datom(a = Some(p))) else None
 
-    val prefix = Some(Datom(a = Some("person/:age")))
-    val upperPrefix = prefix*/
+    val upperTerm = Datom(a = Some(pupper), v = Some(vupper))
+    val upperPrefix = if(prefixPresent) Some(Datom(a = Some(pupper))) else None
 
-    //val it = index.gt(term = term, prefix = prefix, inclusive = inclusive)
+    val prefixOrd = new Ordering[Datom] {
+      override def compare(pre: K, k: K): Int = {
+        if(prefixPresent) comp.compare(prefix.get.getA.getBytes(Charsets.UTF_8), k.getA.getBytes(Charsets.UTF_8)) else -1
+      }
+    }
 
-    /*val it = index.gt(term = term, prefix = prefix, inclusive = inclusive)*/
-    /*val it = index.lt(term, prefix, inclusive)*/
-    val it = index.interval(term, upperTerm, prefix, upperPrefix, inclusive, upperInclusive)
+    val upperPrefixOrd = new Ordering[Datom] {
+      override def compare(pre: K, k: K): Int = {
+        if(prefixPresent) comp.compare(upperPrefix.get.getA.getBytes(Charsets.UTF_8), k.getA.getBytes(Charsets.UTF_8)) else -1
+      }
+    }
 
-    //it.setLimit(5)
+    //val it = index.gt(term = term, inclusive = inclusive)(prefixOrd)
+    //val it = index.lt(term = term, inclusive = inclusive)(prefixOrd)
+    //val it = index.interval(term, upperTerm, inclusive, upperInclusive)(prefixOrd, upperPrefixOrd)
+
+    def checkLt(k: K): Boolean = {
+      prefixOrd.equiv(k, k) && (inclusive && ord.lteq(k, term) || ord.lt(k, term))
+    }
+
+    def checkGt(k: K): Boolean = {
+      prefixOrd.equiv(k, k) && (inclusive && ord.gteq(k, term) || ord.gt(k, term))
+    }
 
     def checkInterval(k: K): Boolean = {
-      (prefix.isEmpty || avetOrdering.gteq(prefix.get, term)) &&
-        (upperPrefix.isEmpty || avetOrdering.lteq(upperPrefix.get, upperTerm)) &&
-        (inclusive && avetOrdering.gteq(k, term) || avetOrdering.gt(k, term)) &&
-        (upperInclusive && avetOrdering.lteq(k, upperTerm) || avetOrdering.lt(k, upperTerm))
+      (prefixOrd.equiv(k, k)) && (inclusive && ord.gteq(k, term) || ord.gt(k, term)) &&
+        (upperPrefixOrd.equiv(k, k) && (upperInclusive && ord.lteq(k, upperTerm) || ord.lt(k, upperTerm)))
     }
+
+    var it: RichAsyncIterator[Datom, Bytes] = null
+    var shouldbe = Seq.empty[Datom]
 
     def findAll(): Future[Seq[Datom]] = {
       it.hasNext().flatMap {
@@ -191,9 +217,41 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
       }
     }
 
-    val r = Await.result(findAll(), Duration.Inf)
+    var op = ""
 
-    /*val shouldbe = datoms.filter(_.getA.compareTo(prefix.getA) == 0).filter{d => inclusive && avetOrdering.lteq(d, term) || avetOrdering.lt(d, term)}
+    rand.nextInt(1, 4) match {
+      case 1 =>
+
+        op = if(inclusive) "<=" else "<"
+        it = index.lt(term = term, inclusive = inclusive)(prefixOrd)
+        shouldbe = datoms.sorted(ord).filter{d => checkLt(d)}
+
+      case 2 =>
+
+        op = if(inclusive) ">=" else ">"
+        it = index.gt(term = term, inclusive = inclusive)(prefixOrd)
+        shouldbe = datoms.sorted(ord).filter{d => checkGt(d)}
+
+      case 3 =>
+
+        op = s"${if(inclusive) ">=" else ">"}, ${if(upperInclusive) "<=" else "<"}"
+        it = index.interval(term, upperTerm, inclusive, upperInclusive)(prefixOrd, upperPrefixOrd)
+        shouldbe = datoms.sorted(ord).filter{d => checkInterval(d)}
+    }
+
+    //it.setLimit(5)
+
+    val r = Await.result(findAll(), Duration.Inf).map { d =>
+      d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
+      //d.getV.asReadOnlyByteBuffer().getInt()
+    }
+
+    val ref = shouldbe.map { d =>
+      d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
+      //d.getV.asReadOnlyByteBuffer().getInt()
+    }
+
+    /*val shouldbe = datoms.filter(_.getA.compareTo(prefix.getA) == 0).filter{d => inclusive && termOrdering.lteq(d, term) || termOrdering.lt(d, term)}
       .sorted.map { d =>
         d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
       }*/
@@ -204,22 +262,31 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
 
     assert(sorted == data)
 
-    val shouldbe = datoms.sorted.filter{d => checkInterval(d)}.map { d =>
-      d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-      //d.getV.asReadOnlyByteBuffer().getInt()
+    def formatDatom(d: Datom): String = {
+      var arr = Seq.empty[String]
+
+      if(d.a.isDefined){
+        arr = arr :+ d.getA
+      }
+
+      if(d.v.isDefined){
+        arr = arr :+ (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt().toString else new String(d.getV.toByteArray))
+      }
+
+      arr.mkString(",")
     }
 
-    val formatted =  r.map { d =>
-      d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-      //d.getV.asReadOnlyByteBuffer().getInt()
+    def formatDatomOpt(d: Option[Datom]): String = {
+      if(d.isEmpty) return "[empty]"
+      formatDatom(d.get)
     }
 
-    logger.info(s"\n $p ${(if(p.compareTo("person/:age") == 0) v.asReadOnlyByteBuffer().getInt() else new String(v.toByteArray))} prefix: ${prefix} inclusive: ${inclusive} upperTerm: ${upperTerm} upperInclusive: ${upperInclusive} result: ${formatted}")
-    logger.info(s"\n $p ${(if(p.compareTo("person/:age") == 0) v.asReadOnlyByteBuffer().getInt() else new String(v.toByteArray))} prefix: ${prefix} inclusive: ${inclusive} upperTerm: ${upperTerm} upperInclusive: ${upperInclusive} should be: ${shouldbe}")
+    logger.info(s"\n op: ${op} prefix ${formatDatomOpt(prefix)} lowerterm ${formatDatom(term)} inclusive: ${inclusive} upperTerm: ${formatDatom(upperTerm)} result: ${r}\n")
+    logger.info(s"\n op: ${op} prefix ${formatDatomOpt(prefix)} lowerterm ${formatDatom(term)} inclusive: ${inclusive} upperTerm: ${formatDatom(upperTerm)} result: ${ref}")
 
     //index.prettyPrint()(d => (d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e).toString, buf => "")
 
-    assert(formatted == shouldbe)
+    assert(r == ref)
 
   }
 

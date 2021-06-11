@@ -17,6 +17,12 @@ class IntSpec extends  AnyFlatSpec with Repeatable {
 
   override val times = 1000
 
+  implicit val ord = new Ordering[Int] {
+    override def compare(x: Int, y: Int): Int = {
+      x.compareTo(y)
+    }
+  }
+
   implicit def strToBytes(str: String): Bytes = str.getBytes(Charsets.UTF_8)
 
   val EMPTY_ARRAY = Array.empty[Byte]
@@ -60,7 +66,9 @@ class IntSpec extends  AnyFlatSpec with Repeatable {
 
     Await.result(index.insert(datoms.map{_ -> 0}).flatMap(_ => ctx.save()), Duration.Inf)
 
-    val idata = Await.result(index.inOrder(), Duration.Inf).map{case (k, _) => k}
+    val allit = index.inOrder()
+
+    val idata = Await.result(TestHelper.all(allit), Duration.Inf).map{case (k, _) => k}
     val sorted = datoms.sorted
 
     assert(idata == sorted)
@@ -71,11 +79,24 @@ class IntSpec extends  AnyFlatSpec with Repeatable {
     val term = rand.nextInt(0, 10000)
     val upperTerm = rand.nextInt(term, 10000)
 
-    /*val it = index.gt(term = term, inclusive = inclusive)*/
+    val it = index.gt(term = term, inclusive = inclusive)
     /*val it = index.lt(term = term, prefix = None, inclusive = inclusive)*/
-    val it = index.interval(term, upperTerm, None, None, inclusive, upperInclusive)
+   /* val it = index.interval(term, upperTerm, None, None, inclusive, upperInclusive)*/
 
     //it.setLimit(5)
+
+    def checkLt(k: K): Boolean = {
+      (inclusive && ord.lteq(k, term) || ord.lt(k, term))
+    }
+
+    def checkGt(k: K): Boolean = {
+      (inclusive && ord.gteq(k, term) || ord.gt(k, term))
+    }
+
+    def checkInterval(k: K): Boolean = {
+        (inclusive && ord.gteq(k, term) || ord.gt(k, term)) &&
+        (upperInclusive && ord.lteq(k, upperTerm) || ord.lt(k, upperTerm))
+    }
 
     def findAll(): Future[Seq[Int]] = {
       it.hasNext().flatMap {
@@ -87,8 +108,7 @@ class IntSpec extends  AnyFlatSpec with Repeatable {
     }
 
     val gtlist = Await.result(findAll(), Duration.Inf)
-    val list = sorted.filter{e => (inclusive && e.compareTo(term) >= 0 || e.compareTo(term) > 0) &&
-      (upperInclusive && e.compareTo(upperTerm) <= 0 || e.compareTo(upperTerm) < 0)}
+    val list = sorted.filter{e => checkInterval(e)}
 
     logger.info(s"\nindex query lowterm ${term} upperterm ${upperTerm} inclusive $inclusive upperInclusive ${upperInclusive}: ${gtlist}\n")
     logger.info(s"\nindex query lowterm ${term} upperterm ${upperTerm} inclusive $inclusive upperInclusive ${upperInclusive}: ${list}\n")
