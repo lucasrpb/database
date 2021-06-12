@@ -10,40 +10,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
   override val $this = this
 
-  override def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
-
-    if(limit.isDefined && limit.get.unique_id.equals(start.unique_id)){
-      logger.debug(s"reached limit!")
-      return Future.successful(None)
-    }
-
-    start match {
-      case leaf: Leaf[K,V] => Future.successful(Some(leaf))
-      case meta: Meta[K,V] =>
-
-        meta.setPointers()(ctx)
-
-        val bid = meta.findPath(k)
-
-        ctx.get(bid).flatMap { block =>
-          findPath(k, block, limit)
-        }
-    }
-  }
-
-  override def findPath(k: K, limit: Option[Block[K,V]] = None)(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
-    if(ctx.root.isEmpty) {
-      return Future.successful(None)
-    }
-
-    val bid = ctx.root.get
-
-    ctx.get(ctx.root.get).flatMap { start =>
-      ctx.setParent(bid, 0, None)
-      findPath(k, start, limit)
-    }
-  }
-
   protected def gtr(term: K, inclusive: Boolean = false)(implicit prefixOrder: Ordering[K], termOrdering: Ordering[K]): RichAsyncIterator[K, V] = new RichAsyncIterator[K, V] {
 
     val searchOrd = new Ordering[K]{
@@ -79,7 +45,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           case Some(b) =>
             cur = Some(b)
 
-            println("FIRST: \n")
+           /* println("FIRST: \n")
 
             println(b.tuples.map { case (k, _) =>
               val d = k.asInstanceOf[Datom]
@@ -88,7 +54,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
             // println(b.tuples.map(_._1))
 
-            println(b.tuples.filter{case (k, _) => check(k) })
+            println(b.tuples.filter{case (k, _) => check(k) })*/
 
             val filtered = b.tuples.reverse.filter{case (k, _) => check(k) }
             //stop = filtered.isEmpty
@@ -160,7 +126,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
             case Some(b) =>
               cur = Some(b)
 
-              println()
+              /*println()
 
               println(b.tuples.map { case (k, _) =>
                 val d = k.asInstanceOf[Datom]
@@ -169,7 +135,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
               // println(b.tuples.map(_._1))
 
-              println()
+              println()*/
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               stop = filtered.isEmpty
@@ -245,14 +211,14 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           case Some(b) =>
             cur = Some(b)
 
-            println("FIRST:\n")
+            /*println("FIRST:\n")
 
             println(b.tuples.map { case (k, _) =>
               val d = k.asInstanceOf[Datom]
               d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
             })
 
-            println()
+            println()*/
 
             val filtered = b.tuples.reverse.filter{case (k, _) => check(k) }
             //stop = filtered.isEmpty
@@ -466,7 +432,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
             case Some(b) =>
               cur = Some(b)
 
-              println()
+              /*println()
 
               println(b.tuples.map { case (k, _) =>
                 val d = k.asInstanceOf[Datom]
@@ -475,7 +441,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
               // println(b.tuples.map(_._1))
 
-              println()
+              println()*/
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               stop = filtered.isEmpty
