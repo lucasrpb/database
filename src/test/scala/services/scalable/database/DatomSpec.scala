@@ -201,10 +201,6 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
       }
     }
 
-    //val it = index.gt(term = term, inclusive = inclusive)(prefixOrd)
-    //val it = index.lt(term = term, inclusive = inclusive)(prefixOrd)
-    //val it = index.interval(term, upperTerm, inclusive, upperInclusive)(prefixOrd, upperPrefixOrd)
-
     def checkLt(k: K): Boolean = {
       prefixOrd.equiv(k, k) && (inclusive && termOrd.lteq(k, term) || termOrd.lt(k, term))
     }
@@ -231,26 +227,27 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
     }
 
     var op = ""
+    val reverse = rand.nextBoolean()
 
-    /*rand.nextInt(1, 4) match {
+    rand.nextInt(1, 4) match {
       case 1 =>
 
         op = if(inclusive) "<=" else "<"
-        it = index.lt(term = term, inclusive = inclusive)(prefixOrd)
+        it = index.lt(term = term, inclusive = inclusive, reverse)(prefixOrd, termOrd)
         shouldbe = datoms.sorted(ord).filter{d => checkLt(d)}
 
       case 2 =>
 
         op = if(inclusive) ">=" else ">"
-        it = index.gt(term = term, inclusive = inclusive)(prefixOrd)
+        it = index.gt(term = term, inclusive = inclusive, reverse)(prefixOrd, termOrd)
         shouldbe = datoms.sorted(ord).filter{d => checkGt(d)}
 
       case 3 =>
 
         op = s"${if(inclusive) ">=" else ">"}, ${if(upperInclusive) "<=" else "<"}"
-        it = index.interval(term, upperTerm, inclusive, upperInclusive)(prefixOrd, upperPrefixOrd, termOrd)
+        it = index.interval(term, upperTerm, inclusive, upperInclusive, reverse)(prefixOrd, upperPrefixOrd, termOrd)
         shouldbe = datoms.sorted(ord).filter{d => checkInterval(d)}
-    }*/
+    }
 
     //it.setLimit(5)
 
@@ -259,14 +256,16 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
 
     shouldbe = datoms.sorted(ord).reverse.filter{d => checkLt(d)}*/
 
-    op = s"${if(inclusive) ">=" else ">"}, ${if(upperInclusive) "<=" else "<"}"
+    /*op = s"${if(inclusive) ">=" else ">"}, ${if(upperInclusive) "<=" else "<"}"
     it = index.intervalr(term, upperTerm, inclusive, upperInclusive)(prefixOrd, upperPrefixOrd, termOrd)
 
-    shouldbe = datoms.sorted(ord).reverse.filter{d => checkInterval(d)}
+    shouldbe = datoms.sorted(ord).reverse.filter{d => checkInterval(d)}*/
 
     /*op = if(inclusive) ">=" else ">"
-    it = index.gt(term = term, inclusive = inclusive)(prefixOrd, termOrd)
-    shouldbe = datoms.sorted(ord).filter{d => checkGt(d)}*/
+    it = index.lt(term = term, inclusive = inclusive, reverse)(prefixOrd, termOrd)
+    shouldbe = datoms.sorted(ord).filter{d => checkLt(d)}*/
+
+    if(reverse) shouldbe = shouldbe.reverse
 
     /*op = if(inclusive) "<=" else "<"
     it = index.lt(term = term, inclusive = inclusive)(prefixOrd, termOrd)
