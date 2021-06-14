@@ -142,8 +142,6 @@ class RandomSpec extends AnyFlatSpec with Repeatable {
     val inclusive = rand.nextBoolean()
     val upperInclusive = rand.nextBoolean()
 
-    //val it = index.gt(term = datomToBytes(Datom(a = "person/:age", v = age)), inclusive = inclusive)(personAgeOrd)
-
     val properties = Seq("person/:ab", "person/:age", "person/:name", "person/:color")
 
     val names = datoms.filter(_.a.get.compareTo("person/:name") == 0)
@@ -247,7 +245,11 @@ class RandomSpec extends AnyFlatSpec with Repeatable {
         shouldbe = datoms.sorted(ord).filter{d => checkInterval(d)}
     }
 
-    //it.setLimit(5)
+    /*val limit = 5
+
+    it.setLimit(limit)
+
+    shouldbe = shouldbe.slice(0, limit)*/
 
     /*op = if(inclusive) "<=" else "<" + " reverse"
     it = index.ltr(term = term, inclusive = inclusive)(prefixOrd, termOrd)

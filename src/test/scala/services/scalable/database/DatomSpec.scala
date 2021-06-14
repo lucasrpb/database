@@ -249,7 +249,11 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
         shouldbe = datoms.sorted(ord).filter{d => checkInterval(d)}
     }
 
-    //it.setLimit(5)
+    /*val limit = 5
+
+    it.setLimit(limit)
+
+    shouldbe = shouldbe.slice(0, limit)*/
 
     /*op = if(inclusive) "<=" else "<" + " reverse"
     it = index.ltr(term = term, inclusive = inclusive)(prefixOrd, termOrd)
