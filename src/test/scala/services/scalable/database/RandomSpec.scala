@@ -117,7 +117,7 @@ class RandomSpec extends AnyFlatSpec with Repeatable {
         Datom(e = Some(id), a = Some("person/:name"), v = Some(ByteString.copyFrom(name.getBytes(Charsets.UTF_8))), t = Some(now)),
         Datom(e = Some(id), a = Some("person/:age"), v = Some(binAge), t = Some(now)),
         Datom(e = Some(id), a = Some("person/:color"), v = Some(ByteString.copyFrom(color)), t = Some(now)),
-        Datom(e = Some(id), a = Some("person/:ab"), v = Some(ByteString.copyFrom(RandomStringUtils.randomAlphanumeric(6).getBytes(Charsets.UTF_8))))
+        Datom(e = Some(id), a = Some("person/:ab"), v = Some(ByteString.copyFrom(RandomStringUtils.randomAlphanumeric(6).getBytes(Charsets.UTF_8))), t = Some(now))
       )
     }
 
